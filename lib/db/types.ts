@@ -1,12 +1,13 @@
 /**
  * Hand-authored types for the Trend Tracker Supabase schema.
  *
- * Mirrors `supabase/schema.sql`. Once a Supabase project exists you can
- * regenerate this file with:
+ * Mirrors `supabase/migrations/0001_initial.sql`. There is no Supabase project
+ * linked to the CLI yet, so these are maintained by hand. Once a project is
+ * linked you can regenerate this file with:
  *
- *   supabase gen types typescript --project-id <id> > lib/types/database.ts
+ *   supabase gen types typescript --project-id <id> > lib/db/types.ts
  *
- * Until then this keeps the Supabase clients typed for the scaffold.
+ * Use with the Supabase clients, e.g. `SupabaseClient<Database>`.
  */
 
 export type Lang = "th" | "en";
@@ -61,7 +62,7 @@ export interface Database {
           engagement_raw: Json | null;
           published_at: string;
           fetched_at: string;
-          embedding: string | null;
+          embedding: number[] | null;
           trend_id: number | null;
         };
         Insert: {
@@ -77,7 +78,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at: string;
           fetched_at?: string;
-          embedding?: string | null;
+          embedding?: number[] | null;
           trend_id?: number | null;
         };
         Update: {
@@ -93,7 +94,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at?: string;
           fetched_at?: string;
-          embedding?: string | null;
+          embedding?: number[] | null;
           trend_id?: number | null;
         };
         Relationships: [];
@@ -112,7 +113,7 @@ export interface Database {
           velocity: number;
           source_count: number;
           engagement_sum: number;
-          centroid: string | null;
+          centroid: number[] | null;
           first_seen: string;
           last_updated: string;
         };
@@ -129,7 +130,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: string | null;
+          centroid?: number[] | null;
           first_seen?: string;
           last_updated?: string;
         };
@@ -146,7 +147,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: string | null;
+          centroid?: number[] | null;
           first_seen?: string;
           last_updated?: string;
         };

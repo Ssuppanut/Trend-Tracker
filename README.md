@@ -25,11 +25,26 @@ npm install
 npm run dev
 ```
 
-Apply the database schema to your Supabase project (SQL editor or CLI):
+## Database setup
 
-```bash
-# supabase/schema.sql contains the Phase 1 + Phase 2 schema
-```
+There is no Supabase CLI link yet — apply the schema by hand:
+
+1. **Create a Supabase project** at https://supabase.com/dashboard (this
+   provisions a Postgres database with `pgvector` and Auth).
+2. **Run the migration.** Open the project's **SQL Editor**, paste the entire
+   contents of [`supabase/migrations/0001_initial.sql`](supabase/migrations/0001_initial.sql),
+   and run it. This creates every table (`categories`, `raw_items`, `trends`,
+   `trend_snapshots`, `profiles`, `user_keywords`), the indexes, the RLS
+   policies, and seeds the fixed `categories` rows.
+3. **Wire up env vars.** In **Project Settings → API**, copy the values into
+   `.env.local`:
+   - `NEXT_PUBLIC_SUPABASE_URL` — the project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` — the `anon` public key
+   - `SUPABASE_SERVICE_ROLE_KEY` — the `service_role` key (server-only; used by
+     cron / the ingestion pipeline, never exposed to the browser)
+
+> A CLI-based migration workflow (`supabase link` / `supabase db push`) can be
+> added later; for now the SQL Editor is enough.
 
 ## Project structure
 
@@ -43,15 +58,17 @@ components/
 lib/
   supabase/
     client.ts            browser client (anon key, RLS)
-    server.ts            server client (cookies) + service-role client
+    server.ts            server client (cookies, anon key, RLS)
+    service.ts           service-role client (bypasses RLS; server-only)
     middleware.ts        auth session refresh helper
+  db/
+    types.ts             hand-authored Database types (SupabaseClient<Database>)
   sources/
     base.ts              SourceAdapter interface + RawItem contract
-  types/
-    database.ts          typed Supabase schema
   utils.ts               cn() helper
 supabase/
-  schema.sql             database schema (categories, raw_items, trends, …)
+  migrations/
+    0001_initial.sql     database schema (categories, raw_items, trends, …)
 middleware.ts            root middleware → Supabase session refresh
 .env.example             all required environment variables
 components.json          shadcn/ui config
@@ -69,5 +86,5 @@ per-source details and engagement normalization.
 - `shadcn/ui` is configured (`components.json`, theme tokens, `cn()`); add
   components with `npx shadcn@latest add <component>` when network access to
   the shadcn registry is available.
-- `lib/types/database.ts` is hand-authored for now; regenerate once a Supabase
-  project exists with `supabase gen types typescript`.
+- `lib/db/types.ts` is hand-authored for now; regenerate once a Supabase
+  project is linked with `supabase gen types typescript`.
