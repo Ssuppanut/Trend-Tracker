@@ -62,7 +62,7 @@ export interface Database {
           engagement_raw: Json | null;
           published_at: string;
           fetched_at: string;
-          embedding: string | null;
+          embedding: number[] | null;
           trend_id: number | null;
         };
         Insert: {
@@ -78,7 +78,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at: string;
           fetched_at?: string;
-          embedding?: string | null;
+          embedding?: number[] | null;
           trend_id?: number | null;
         };
         Update: {
@@ -94,7 +94,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at?: string;
           fetched_at?: string;
-          embedding?: string | null;
+          embedding?: number[] | null;
           trend_id?: number | null;
         };
         Relationships: [];
@@ -113,7 +113,7 @@ export interface Database {
           velocity: number;
           source_count: number;
           engagement_sum: number;
-          centroid: string | null;
+          centroid: number[] | null;
           first_seen: string;
           last_updated: string;
         };
@@ -130,7 +130,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: string | null;
+          centroid?: number[] | null;
           first_seen?: string;
           last_updated?: string;
         };
@@ -147,7 +147,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: string | null;
+          centroid?: number[] | null;
           first_seen?: string;
           last_updated?: string;
         };
