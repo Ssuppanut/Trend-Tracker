@@ -1,12 +1,13 @@
 /**
  * Hand-authored types for the Trend Tracker Supabase schema.
  *
- * Mirrors `supabase/schema.sql`. Once a Supabase project exists you can
- * regenerate this file with:
+ * Mirrors `supabase/migrations/0001_initial.sql`. There is no Supabase project
+ * linked to the CLI yet, so these are maintained by hand. Once a project is
+ * linked you can regenerate this file with:
  *
- *   supabase gen types typescript --project-id <id> > lib/types/database.ts
+ *   supabase gen types typescript --project-id <id> > lib/db/types.ts
  *
- * Until then this keeps the Supabase clients typed for the scaffold.
+ * Use with the Supabase clients, e.g. `SupabaseClient<Database>`.
  */
 
 export type Lang = "th" | "en";

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-import type { Database } from "@/lib/types/database";
+import type { Database } from "@/lib/db/types";
 
 /**
  * Supabase client for use in Server Components, Route Handlers and Server
@@ -28,28 +28,6 @@ export async function createClient() {
             // The `setAll` method was called from a Server Component.
             // This can be ignored if middleware is refreshing sessions.
           }
-        },
-      },
-    },
-  );
-}
-
-/**
- * Privileged Supabase client that uses the service-role key and bypasses
- * Row Level Security. Use ONLY in trusted server contexts (cron jobs, the
- * ingestion pipeline) — never expose the service-role key to the browser.
- */
-export function createServiceRoleClient() {
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return [];
-        },
-        setAll() {
-          // no-op: service-role client is stateless / not tied to a session
         },
       },
     },
