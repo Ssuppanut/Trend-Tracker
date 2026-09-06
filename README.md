@@ -25,6 +25,24 @@ npm install
 npm run dev
 ```
 
+### Running the dev server on the Claude Code sandbox
+
+Inside the Claude Code cloud sandbox, start the dev server with the proxy env
+var so server-side requests to Supabase are allowed:
+
+```bash
+NODE_USE_ENV_PROXY=1 npm run dev
+```
+
+On a normal local machine this is not needed — plain `npm run dev` works.
+
+### Note on Node 22 + undici
+
+The sandbox routes egress through `HTTPS_PROXY`, but Node 22's built-in `fetch`
+(undici) ignores that env var by default, so its direct connections get
+blocked (`Host not in allowlist`). `NODE_USE_ENV_PROXY=1` enables undici's
+`EnvHttpProxyAgent`, sending `fetch` through the allowed proxy.
+
 ## Database setup
 
 There is no Supabase CLI link yet — apply the schema by hand:
