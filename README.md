@@ -64,6 +64,18 @@ There is no Supabase CLI link yet — apply the schema by hand:
 > A CLI-based migration workflow (`supabase link` / `supabase db push`) can be
 > added later; for now the SQL Editor is enough.
 
+## Dashboard
+
+The home page (`/`) is a verification dashboard: it shows summary counts, a
+source × lang × category breakdown, and the **50 most recently fetched**
+`raw_items`, each linking out to its source. It's a read-only Server Component.
+
+To refresh: trigger the ingest cron (below), then reload the page.
+
+> No auth yet — it's a personal tool and reads `raw_items` (which is
+> RLS-locked) with the server-only service-role client. Add Supabase Auth
+> before deploying to production (Sprint 2/3).
+
 ## Ingest cron
 
 `GET /api/cron/ingest` runs every source adapter (Hacker News, RSS) and upserts
