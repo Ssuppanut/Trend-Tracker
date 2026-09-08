@@ -64,6 +64,32 @@ There is no Supabase CLI link yet — apply the schema by hand:
 > A CLI-based migration workflow (`supabase link` / `supabase db push`) can be
 > added later; for now the SQL Editor is enough.
 
+## Ingest cron
+
+`GET /api/cron/ingest` runs every source adapter (Hacker News, RSS) and upserts
+the results into `raw_items` (`on conflict (source, external_id) do nothing`).
+It is protected by `CRON_SECRET` — requests must send
+`Authorization: Bearer $CRON_SECRET`.
+
+Trigger it manually:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/ingest
+```
+
+The response reports per-source counts:
+
+```json
+{ "ok": true, "durationMs": 1234, "sources": [
+  { "name": "hackernews", "fetched": 87, "inserted": 12, "skipped": 75 }
+] }
+```
+
+On Vercel, `vercel.json` schedules this endpoint to run automatically **every 2
+hours**. Vercel Cron sends its own `Authorization: Bearer` header, so set the
+project's `CRON_SECRET` to the Vercel Cron secret for both manual and scheduled
+calls to authorize.
+
 ## Project structure
 
 ```
