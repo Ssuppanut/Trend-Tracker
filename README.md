@@ -76,18 +76,32 @@ To refresh: trigger the ingest cron (below), then reload the page.
 > RLS-locked) with the server-only service-role client. Add Supabase Auth
 > before deploying to production (Sprint 2/3).
 
-## Ingest cron
+## Ingest endpoint (manual)
 
 `GET /api/cron/ingest` runs every source adapter (Hacker News, RSS) and upserts
 the results into `raw_items` (`on conflict (source, external_id) do nothing`).
 It is protected by `CRON_SECRET` — requests must send
 `Authorization: Bearer $CRON_SECRET`.
 
-Trigger it manually:
+It is currently **manual trigger only** — there is no scheduled run. Invoke it
+one of these ways:
+
+**a) Local development**
 
 ```bash
-curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/ingest
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  http://localhost:3000/api/cron/ingest
 ```
+
+**b) Production (Vercel deploy)**
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  https://your-app.vercel.app/api/cron/ingest
+```
+
+**c) In a browser** — you need an extension that can add request headers (e.g.
+ModHeader) to send `Authorization: Bearer <CRON_SECRET>`.
 
 The response reports per-source counts:
 
@@ -97,10 +111,8 @@ The response reports per-source counts:
 ] }
 ```
 
-On Vercel, `vercel.json` schedules this endpoint to run automatically **every 2
-hours**. Vercel Cron sends its own `Authorization: Bearer` header, so set the
-project's `CRON_SECRET` to the Vercel Cron secret for both manual and scheduled
-calls to authorize.
+> Auto-scheduled cron via `vercel.json` was removed to save invocations during
+> development. Re-enable when ready for production.
 
 ## Project structure
 
