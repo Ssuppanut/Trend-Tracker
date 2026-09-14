@@ -1,5 +1,6 @@
 import { formatDistanceToNowStrict } from "date-fns";
 
+import { DashboardHeader } from "@/app/dashboard-header";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -74,7 +75,7 @@ export default async function DashboardPage() {
   if (error) {
     return (
       <main className="mx-auto max-w-7xl space-y-6 p-8">
-        <Header />
+        <DashboardHeader />
         <Card className="border-destructive">
           <CardHeader>
             <CardTitle className="text-destructive">Query failed</CardTitle>
@@ -98,7 +99,7 @@ export default async function DashboardPage() {
   if (total === 0) {
     return (
       <main className="mx-auto max-w-7xl space-y-6 p-8">
-        <Header />
+        <DashboardHeader />
         <Card>
           <CardHeader>
             <CardTitle>No items yet</CardTitle>
@@ -142,7 +143,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-8">
-      <Header />
+      <DashboardHeader />
 
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -184,7 +185,7 @@ export default async function DashboardPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Source</TableHead>
-                <TableHead>Lang</TableHead>
+                <TableHead>Language</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-right">Count</TableHead>
               </TableRow>
@@ -224,7 +225,7 @@ export default async function DashboardPage() {
                 <TableHead>Source</TableHead>
                 <TableHead className="min-w-[280px]">Title</TableHead>
                 <TableHead className="w-[140px]">Engagement</TableHead>
-                <TableHead>Lang</TableHead>
+                <TableHead>Language</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead>Published</TableHead>
                 <TableHead>Fetched</TableHead>
@@ -300,15 +301,3 @@ export default async function DashboardPage() {
   );
 }
 
-function Header() {
-  return (
-    <header className="space-y-1">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        What&apos;s New — Sprint 1 Dashboard
-      </h1>
-      <p className="text-muted-foreground text-sm">
-        Verification view of ingested <code>raw_items</code>.
-      </p>
-    </header>
-  );
-}
