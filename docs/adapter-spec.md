@@ -56,7 +56,7 @@ export interface SourceAdapter {
 | YouTube | `log10(views + 1) * 10 + (likes / max(views,1)) * 100` |
 | TikTok CC | ใช้ rank ที่ platform ให้มา (invert: rank 1 = สูงสุด) |
 | Pantip | `replies * 3 + votes` |
-| RSS | ไม่มี engagement ให้ตั้ง 50 คงที่ (น้ำหนักไปอยู่ที่ source_diversity แทน) |
+| RSS | recencyScore × 0.6 + authorityScore × 0.4 (RSS v2 — proxy signal, absolute 0-100, ไม่ใช้ percentile) |
 | Google Trends | ใช้ scaled interest ที่ API ให้มาตรงๆ |
 
 เก็บค่าดิบทั้งหมดใน `engagementRaw` เสมอ เผื่อเปลี่ยนสูตรทีหลังจะ backfill ได้
@@ -139,7 +139,7 @@ export interface SourceAdapter {
 | externalId | `guid` ของ item, ถ้าไม่มีใช้ hash ของ url |
 | lang | ตาม feed |
 | categoryHint | ตาม feed: Blognone→tech-ai, CoinDesk→crypto, ข่าวทั่วไป→news |
-| engagement | 50 คงที่ (ดูข้อ 1) |
+| engagement | recencyScore × 0.6 + authorityScore × 0.4 (RSS v2) — recency จากอายุข่าว, authority hardcode ต่อ feed; absolute 0-100 ไม่ใช้ percentile |
 
 ## 8. Google Trends (priority 3 รอ alpha access)
 
