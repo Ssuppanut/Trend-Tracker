@@ -83,25 +83,24 @@ the results into `raw_items` (`on conflict (source, external_id) do nothing`).
 It is protected by `CRON_SECRET` — requests must send
 `Authorization: Bearer $CRON_SECRET`.
 
-It is currently **manual trigger only** — there is no scheduled run. Invoke it
-one of these ways:
+It is currently **manual trigger only** — there is no scheduled run. Two ways
+to trigger it:
 
-**a) Local development**
+**a) The "Fetch new items" button on the dashboard** (production or local) —
+the easiest way. It calls a Server Action that runs the same ingest on the
+server, so no header is needed.
+
+**b) `curl` the endpoint directly** (send the `Authorization` header):
 
 ```bash
+# Local
 curl -H "Authorization: Bearer $CRON_SECRET" \
   http://localhost:3000/api/cron/ingest
-```
 
-**b) Production (Vercel deploy)**
-
-```bash
+# Production
 curl -H "Authorization: Bearer $CRON_SECRET" \
-  https://your-app.vercel.app/api/cron/ingest
+  https://spn-trend-tracker.vercel.app/api/cron/ingest
 ```
-
-**c) In a browser** — you need an extension that can add request headers (e.g.
-ModHeader) to send `Authorization: Bearer <CRON_SECRET>`.
 
 The response reports per-source counts:
 
@@ -111,8 +110,8 @@ The response reports per-source counts:
 ] }
 ```
 
-> Auto-scheduled cron via `vercel.json` was removed to save invocations during
-> development. Re-enable when ready for production.
+> Vercel Cron auto-scheduling disabled to save invocations during development.
+> Re-enable by restoring `vercel.json` when ready for production auto-run.
 
 ## Project structure
 
