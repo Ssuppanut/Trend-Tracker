@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { rssAdapter } from "./rss";
+import { recencyScore, rssAdapter } from "./rss";
 
 const blognoneFixture = readFileSync(
   new URL("./__fixtures__/rss-blognone.xml", import.meta.url),
@@ -28,8 +28,23 @@ function stubFetch(handler: (url: string) => string): void {
   );
 }
 
+/** Build an <item> with a specific pubDate. */
+function itemWithDate(pubDate: string): string {
+  return `<item><title>Dated</title><link>https://example.com/d</link><guid>gd</guid><description>b</description><pubDate>${pubDate}</pubDate></item>`;
+}
+
+const FIXED_NOW = new Date("2026-09-15T12:00:00Z");
+
+beforeEach(() => {
+  // Fake only Date (not setTimeout) so recency is deterministic while the
+  // adapter's retry backoff still uses real timers.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(FIXED_NOW);
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("rssAdapter", () => {
@@ -88,17 +103,19 @@ describe("rssAdapter", () => {
     expect(items.some((it) => it.categoryHint === "crypto")).toBe(false);
   });
 
-  it("sets engagement to a flat 50 with empty engagementRaw", async () => {
-    stubFetch(() => doc(ITEM_FULL));
+  it("computes engagement from recency + authority (0-100, empty raw), not a flat 50", async () => {
+    stubFetch(() => doc(ITEM_FULL)); // same old-dated item across all 10 feeds
 
     const items = await rssAdapter.fetch();
 
-    expect(
-      items.every(
-        (it) =>
-          it.engagement === 50 && Object.keys(it.engagementRaw).length === 0,
-      ),
-    ).toBe(true);
+    for (const it of items) {
+      expect(it.engagement).toBeGreaterThanOrEqual(0);
+      expect(it.engagement).toBeLessThanOrEqual(100);
+      expect(it.engagementRaw).toEqual({});
+    }
+    // Same recency everywhere (old item) but authority differs per feed, so
+    // engagement spreads across more than one value — no longer a flat 50.
+    expect(new Set(items.map((it) => it.engagement)).size).toBeGreaterThan(1);
   });
 
   it("maps lang and categoryHint from each feed's config", async () => {
@@ -129,7 +146,8 @@ describe("rssAdapter", () => {
       expect(item.source).toBe("rss");
       expect(item.lang).toBe("th");
       expect(item.categoryHint).toBe("tech-ai");
-      expect(item.engagement).toBe(50);
+      expect(item.engagement).toBeGreaterThanOrEqual(0);
+      expect(item.engagement).toBeLessThanOrEqual(100);
       expect(item.engagementRaw).toEqual({});
       expect(item.title.trim().length).toBeGreaterThan(0);
       expect(item.url).toMatch(/^https?:\/\//);
@@ -137,5 +155,47 @@ describe("rssAdapter", () => {
       // publishedAt is a valid ISO 8601 timestamp
       expect(new Date(item.publishedAt).toISOString()).toBe(item.publishedAt);
     }
+  });
+
+  // --- engagement v2: recency + source authority ---
+
+  it("recencyScore: 30 min ago = 100", () => {
+    const iso = new Date(Date.now() - 30 * 60_000).toISOString();
+    expect(recencyScore(iso)).toBe(100);
+  });
+
+  it("recencyScore: 3 days ago = 10", () => {
+    const iso = new Date(Date.now() - 3 * 24 * 3_600_000).toISOString();
+    expect(recencyScore(iso)).toBe(10);
+  });
+
+  it("recencyScore: invalid date = 50", () => {
+    expect(recencyScore("not-a-date")).toBe(50);
+    expect(recencyScore("")).toBe(50);
+  });
+
+  it("engagement: TechCrunch 30 min ago = 96 (100×0.6 + 90×0.4)", async () => {
+    const pubDate = new Date(Date.now() - 30 * 60_000).toUTCString();
+    stubFetch((url) =>
+      url.includes("techcrunch.com") ? doc(itemWithDate(pubDate)) : doc(),
+    );
+
+    const items = await rssAdapter.fetch();
+
+    expect(items).toHaveLength(1);
+    expect(items[0].engagement).toBe(96);
+  });
+
+  it("engagement: Marketeer ~36h ago = 37 (25×0.6 + 55×0.4)", async () => {
+    // 24-48h old → recency bucket 25; Marketeer authority 55.
+    const pubDate = new Date(Date.now() - 36 * 3_600_000).toUTCString();
+    stubFetch((url) =>
+      url.includes("marketeeronline.co") ? doc(itemWithDate(pubDate)) : doc(),
+    );
+
+    const items = await rssAdapter.fetch();
+
+    expect(items).toHaveLength(1);
+    expect(items[0].engagement).toBe(37);
   });
 });

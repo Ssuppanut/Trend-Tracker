@@ -9,8 +9,31 @@ const USER_AGENT = "TrendTracker/0.1 (personal project)";
 const REQUEST_TIMEOUT_MS = 15_000;
 const RETRY_DELAY_MS = 1_000;
 const BODY_MAX_CHARS = 2_000;
-/** RSS has no engagement metric; use a flat 50 (adapter-spec §1). */
-const RSS_ENGAGEMENT = 50;
+
+// RSS has no real engagement metric, so engagement is a proxy signal:
+// recency (60%) + source authority (40%). See adapter-spec §7 (RSS v2).
+const RECENCY_WEIGHT = 0.6;
+const AUTHORITY_WEIGHT = 0.4;
+
+/** Per-feed authority weight (audience size + editorial rigor), 0-100. */
+const SOURCE_AUTHORITY: Record<string, number> = {
+  // English (large audience)
+  "https://techcrunch.com/feed/": 90,
+  "https://www.theverge.com/rss/index.xml": 85,
+  "https://www.coindesk.com/arc/outboundfeeds/rss/": 85,
+  "https://feeds.arstechnica.com/arstechnica/index": 80,
+  "https://news.ycombinator.com/rss": 75, // HN front page RSS (distinct from the HN API adapter)
+
+  // Thai (mid audience)
+  "https://www.blognone.com/atom.xml": 75,
+  "https://thestandard.co/feed/": 70,
+  "https://brandinside.asia/feed/": 65,
+  "https://marketeeronline.co/feed": 55,
+  "https://positioningmag.com/feed": 55,
+};
+
+/** Fallback for a feed not in the map (shouldn't happen — guard). */
+const DEFAULT_AUTHORITY = 50;
 
 const FEEDS = [
   // Thai
@@ -104,6 +127,9 @@ async function processFeed(feed: Feed): Promise<FeedResult> {
 
     const bodyRaw = item.contentSnippet ?? item.content;
     const dateStr = item.isoDate ?? item.pubDate;
+    const publishedAt = dateStr
+      ? new Date(dateStr).toISOString()
+      : new Date().toISOString();
 
     items.push({
       source: SOURCE,
@@ -113,15 +139,38 @@ async function processFeed(feed: Feed): Promise<FeedResult> {
       body: bodyRaw ? truncate(bodyRaw, BODY_MAX_CHARS) : null,
       lang: feed.lang,
       categoryHint: feed.categoryHint,
-      engagement: RSS_ENGAGEMENT,
+      engagement: computeRssEngagement(publishedAt, feed.url),
       engagementRaw: {},
-      publishedAt: dateStr
-        ? new Date(dateStr).toISOString()
-        : new Date().toISOString(),
+      publishedAt,
     });
   }
 
   return { name, items, fetched: rawItems.length, kept: items.length, skipped };
+}
+
+/**
+ * Recency component of the RSS engagement proxy: fresher items score higher.
+ * Returns 0-100. A missing / malformed / future date defaults to 50.
+ */
+export function recencyScore(publishedAt: string): number {
+  const t = new Date(publishedAt).getTime();
+  if (!Number.isFinite(t)) return 50;
+  const ageHours = (Date.now() - t) / 3_600_000;
+  if (ageHours < 0) return 50; // future date = wrong, default
+  if (ageHours < 1) return 100;
+  if (ageHours < 6) return 90;
+  if (ageHours < 12) return 75;
+  if (ageHours < 24) return 50;
+  if (ageHours < 48) return 25;
+  return 10;
+}
+
+/** RSS engagement (adapter-spec §7 v2): recency 60% + source authority 40%. */
+function computeRssEngagement(publishedAt: string, feedUrl: string): number {
+  const recency = recencyScore(publishedAt);
+  const authority = SOURCE_AUTHORITY[feedUrl] ?? DEFAULT_AUTHORITY;
+  const score = recency * RECENCY_WEIGHT + authority * AUTHORITY_WEIGHT;
+  return Math.round(Math.min(100, Math.max(0, score)));
 }
 
 export const rssAdapter: SourceAdapter = {
