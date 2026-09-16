@@ -62,7 +62,10 @@ export interface Database {
           engagement_raw: Json | null;
           published_at: string;
           fetched_at: string;
-          embedding: number[] | null;
+          // pgvector round-trips as its text literal ("[0.1,0.2,...]") over
+          // PostgREST on read; writes accept that literal or a number[]. Parse
+          // with lib/embeddings/vector.ts before doing math on it.
+          embedding: string | null;
           trend_id: number | null;
         };
         Insert: {
@@ -78,7 +81,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at: string;
           fetched_at?: string;
-          embedding?: number[] | null;
+          embedding?: string | number[] | null;
           trend_id?: number | null;
         };
         Update: {
@@ -94,7 +97,7 @@ export interface Database {
           engagement_raw?: Json | null;
           published_at?: string;
           fetched_at?: string;
-          embedding?: number[] | null;
+          embedding?: string | number[] | null;
           trend_id?: number | null;
         };
         Relationships: [];
@@ -113,7 +116,8 @@ export interface Database {
           velocity: number;
           source_count: number;
           engagement_sum: number;
-          centroid: number[] | null;
+          // pgvector text literal on read; string | number[] on write.
+          centroid: string | null;
           first_seen: string;
           last_updated: string;
         };
@@ -130,7 +134,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: number[] | null;
+          centroid?: string | number[] | null;
           first_seen?: string;
           last_updated?: string;
         };
@@ -147,7 +151,7 @@ export interface Database {
           velocity?: number;
           source_count?: number;
           engagement_sum?: number;
-          centroid?: number[] | null;
+          centroid?: string | number[] | null;
           first_seen?: string;
           last_updated?: string;
         };
