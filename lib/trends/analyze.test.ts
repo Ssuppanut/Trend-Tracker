@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
+import { describeProvider } from "@/lib/embeddings";
+
 import { runAnalyze } from "./analyze";
 
 const NOW = new Date("2026-09-15T12:00:00.000Z").getTime();
 const HOUR = 3_600_000;
 const iso = (hoursAgo: number) => new Date(NOW - hoursAgo * HOUR).toISOString();
+
+// Active space these tests operate in (providerName: "deepinfra" below).
+const SPACE = describeProvider("deepinfra");
 
 interface RawRow {
   id: number;
@@ -15,6 +20,8 @@ interface RawRow {
   category_hint: string | null;
   title: string;
   embedding: string;
+  embedding_provider: string | null;
+  embedding_model: string | null;
 }
 
 function rawRow(id: number, embedding: string, over: Partial<RawRow> = {}): RawRow {
@@ -27,16 +34,35 @@ function rawRow(id: number, embedding: string, over: Partial<RawRow> = {}): RawR
     category_hint: over.category_hint ?? "tech-ai",
     title: over.title ?? `item-${id}`,
     embedding,
+    embedding_provider: over.embedding_provider ?? SPACE.provider,
+    embedding_model: over.embedding_model ?? SPACE.model,
   };
 }
+
+type ExistingTrendRow = {
+  id: number;
+  centroid: string | null;
+  embedding_provider: string | null;
+  embedding_model: string | null;
+};
 
 interface Fixtures {
   unclustered?: RawRow[];
   unclusteredError?: { message: string } | null;
-  existingTrends?: Array<{ id: number; centroid: string | null }>;
+  existingTrends?: ExistingTrendRow[];
   membersByTrend?: Record<number, RawRow[]>;
   snapshotsByTrend?: Record<number, Array<{ volume_24h: number }>>;
   startTrendId?: number;
+}
+
+/** Existing-trend fixture in the active space by default. */
+function existingTrend(id: number, centroid: string, over: Partial<ExistingTrendRow> = {}): ExistingTrendRow {
+  return {
+    id,
+    centroid,
+    embedding_provider: over.embedding_provider ?? SPACE.provider,
+    embedding_model: over.embedding_model ?? SPACE.model,
+  };
 }
 
 /** Table-dispatching Supabase mock covering exactly the analyze query shapes. */
@@ -153,7 +179,13 @@ function makeSupabase(fx: Fixtures) {
   return { client: { from } as never, rec };
 }
 
-const OPTS = { provider: null, now: NOW, threshold: 0.6, minClusterSize: 2 } as const;
+const OPTS = {
+  provider: null,
+  providerName: "deepinfra",
+  now: NOW,
+  threshold: 0.6,
+  minClusterSize: 2,
+} as const;
 
 describe("runAnalyze", () => {
   it("creates a trend from a cluster of similar unclustered items", async () => {
@@ -179,6 +211,10 @@ describe("runAnalyze", () => {
     expect(inserted.row.summary).toBeNull(); // LLM deferred
     expect(inserted.row.centroid).toBe("[0.99,0.01]"); // mean of the pair
     expect(inserted.row.source_count).toBe(2);
+    // new trend is tagged with the active space
+    expect(inserted.row.embedding_provider).toBe(SPACE.provider);
+    expect(inserted.row.embedding_model).toBe(SPACE.model);
+    expect(res.provider).toBe("deepinfra");
 
     // members 1 & 2 got the new trend id; snapshot written
     expect(sb.rec.trendIdSets).toHaveLength(1);
@@ -191,7 +227,7 @@ describe("runAnalyze", () => {
   it("attaches a new item to an existing trend and recomputes it", async () => {
     const sb = makeSupabase({
       unclustered: [rawRow(5, "[1,0]", { source: "hackernews", engagement: 90 })],
-      existingTrends: [{ id: 100, centroid: "[1,0]" }],
+      existingTrends: [existingTrend(100, "[1,0]")],
       membersByTrend: {
         100: [rawRow(1, "[1,0]", { source: "rss", engagement: 50, published_at: iso(2) })],
       },
@@ -223,6 +259,25 @@ describe("runAnalyze", () => {
 
     expect(res).toMatchObject({ itemsConsidered: 0, trendsCreated: 0, trendsUpdated: 0 });
     expect(sb.rec.trendInserts).toHaveLength(0);
+  });
+
+  it("never mixes embedding spaces: items from another provider are excluded", async () => {
+    const sb = makeSupabase({
+      // Two similar vectors, but one is a Jina-space item — only the two
+      // active-space (deepinfra) items may form a trend.
+      unclustered: [
+        rawRow(1, "[1,0]"),
+        rawRow(2, "[0.98,0.02]"),
+        rawRow(3, "[0.99,0.01]", { embedding_provider: "jina", embedding_model: "jina-embeddings-v3" }),
+      ],
+      existingTrends: [],
+    });
+
+    const res = await runAnalyze({ ...OPTS, supabase: sb.client });
+
+    expect(res.itemsConsidered).toBe(2); // the jina item was filtered out
+    expect(res.trendsCreated).toBe(1);
+    expect(sb.rec.trendIdSets[0].ids.sort()).toEqual([1, 2]); // never id 3
   });
 
   it("reports a load error without throwing", async () => {

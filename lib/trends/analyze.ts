@@ -1,5 +1,11 @@
+import {
+  describeProvider,
+  resolveProviderName,
+  tryGetEmbeddingProvider,
+  type EmbeddingProvider,
+  type EmbeddingSpace,
+} from "@/lib/embeddings";
 import { embedPendingItems, type EmbedPendingResult } from "@/lib/embeddings/embed-items";
-import type { EmbeddingProvider } from "@/lib/embeddings/types";
 import { parseVector, toVectorLiteral } from "@/lib/embeddings/vector";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import type { Lang } from "@/lib/db/types";
@@ -12,9 +18,9 @@ import type { ClusterItem, TrendMetrics } from "./types";
 
 type ServiceClient = ReturnType<typeof createServiceRoleClient>;
 
-/** Columns needed to build a ClusterItem from a raw_items row. */
+/** Columns needed to build a ClusterItem + identify its embedding space. */
 const ITEM_COLUMNS =
-  "id, source, engagement, published_at, lang, category_hint, title, embedding";
+  "id, source, engagement, published_at, lang, category_hint, title, embedding, embedding_provider, embedding_model";
 
 /** Max unclustered items to consider per run (bounds cost). */
 const MAX_ITEMS = 1_000;
@@ -32,11 +38,17 @@ export interface AnalyzeResult {
   trendsUpdated: number;
   /** Items assigned to any trend (new or existing) this run. */
   itemsClustered: number;
+  /** The active embedding space this run operated in. */
+  provider: string;
+  model: string;
   error?: string;
 }
 
 export interface AnalyzeOptions {
   supabase?: ServiceClient;
+  /** Selected provider name (validated); defaults to EMBEDDINGS_PROVIDER. */
+  providerName?: string | null;
+  /** Inject a live provider (tests); `undefined` = resolve, `null` = skip embedding. */
   provider?: EmbeddingProvider | null;
   threshold?: number;
   minClusterSize?: number;
@@ -52,6 +64,8 @@ interface RawItemRow {
   category_hint: string | null;
   title: string;
   embedding: string | number[] | null;
+  embedding_provider: string | null;
+  embedding_model: string | null;
 }
 
 /** Parse raw rows into ClusterItems, dropping any without a usable embedding. */
@@ -140,6 +154,11 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
   const minClusterSize = options.minClusterSize ?? MIN_CLUSTER_SIZE;
   const supabase = options.supabase ?? createServiceRoleClient();
 
+  // The active embedding space. Everything this run reads/writes stays inside
+  // it — vectors from other providers/models are never mixed in.
+  const activeName = resolveProviderName(options.providerName);
+  const space: EmbeddingSpace = describeProvider(activeName);
+
   const empty = (extra: Partial<AnalyzeResult> = {}): AnalyzeResult => ({
     durationMs: Date.now() - startedAt,
     embed,
@@ -147,36 +166,56 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
     trendsCreated: 0,
     trendsUpdated: 0,
     itemsClustered: 0,
+    provider: space.provider,
+    model: space.model,
     ...extra,
   });
 
-  // 1. Embed any items still missing a vector (no-op if unconfigured).
-  const embed = await embedPendingItems(supabase, { provider: options.provider });
+  // 1. Embed any items still missing a vector with the ACTIVE provider only
+  //    (never the inactive one). No-op if that provider is unconfigured.
+  const liveProvider =
+    options.provider !== undefined ? options.provider : tryGetEmbeddingProvider(activeName);
+  const embed = await embedPendingItems(supabase, { provider: liveProvider, now });
 
-  // 2. Load unclustered items that already have an embedding.
+  // 2. Load unclustered items in the ACTIVE space only.
   const { data: unclusteredRows, error: loadErr } = await supabase
     .from("raw_items")
     .select(ITEM_COLUMNS)
     .is("trend_id", null)
     .not("embedding", "is", null)
+    .eq("embedding_provider", space.provider)
+    .eq("embedding_model", space.model)
     .order("published_at", { ascending: false })
     .limit(MAX_ITEMS);
 
   if (loadErr) return empty({ error: `load unclustered failed: ${loadErr.message}` });
 
-  const items = toClusterItems((unclusteredRows ?? []) as RawItemRow[]);
+  // Belt-and-suspenders: re-check the space in JS so a mismatched row can never
+  // enter clustering even if the query filter were bypassed.
+  const spaceRows = ((unclusteredRows ?? []) as RawItemRow[]).filter(
+    (r) => r.embedding_provider === space.provider && r.embedding_model === space.model,
+  );
+  const items = toClusterItems(spaceRows);
   if (items.length === 0) return empty();
 
-  // 3. Load candidate trends to attach to (skip archived).
+  // 3. Load candidate trends in the SAME space to attach to (skip archived).
   const { data: existingRows, error: trendsErr } = await supabase
     .from("trends")
-    .select("id, centroid")
+    .select("id, centroid, embedding_provider, embedding_model")
+    .eq("embedding_provider", space.provider)
+    .eq("embedding_model", space.model)
     .in("status", ["active", "fading"]);
 
   if (trendsErr) return empty({ itemsConsidered: items.length, error: `load trends failed: ${trendsErr.message}` });
 
   const existing: ExistingTrend[] = [];
-  for (const row of (existingRows ?? []) as Array<{ id: number; centroid: string | number[] | null }>) {
+  for (const row of (existingRows ?? []) as Array<{
+    id: number;
+    centroid: string | number[] | null;
+    embedding_provider: string | null;
+    embedding_model: string | null;
+  }>) {
+    if (row.embedding_provider !== space.provider || row.embedding_model !== space.model) continue;
     const centroid = parseVector(row.centroid);
     if (centroid) existing.push({ id: row.id, centroid });
   }
@@ -207,6 +246,8 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
         source_count: metrics.sourceCount,
         engagement_sum: metrics.engagementSum,
         centroid: toVectorLiteral(t.cluster.centroid),
+        embedding_provider: space.provider,
+        embedding_model: space.model,
         first_seen: new Date(now).toISOString(),
         last_updated: new Date(now).toISOString(),
       })
@@ -270,7 +311,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
   }
 
   console.log(
-    `[analyze] considered=${items.length} created=${trendsCreated} updated=${trendsUpdated} clustered=${itemsClustered} embed=${
+    `[analyze] space=${space.provider}/${space.model} considered=${items.length} created=${trendsCreated} updated=${trendsUpdated} clustered=${itemsClustered} embed=${
       embed.skipped ? "skipped" : `${embed.embedded}/${embed.candidates}`
     }`,
   );
@@ -282,5 +323,7 @@ export async function runAnalyze(options: AnalyzeOptions = {}): Promise<AnalyzeR
     trendsCreated,
     trendsUpdated,
     itemsClustered,
+    provider: space.provider,
+    model: space.model,
   };
 }
