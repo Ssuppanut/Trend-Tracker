@@ -1,49 +1,103 @@
 /**
- * Embedding provider factory — the one place that knows which vendor is active.
+ * Embedding provider registry — the one place that knows which vendors exist.
  *
- * Everything else imports `getEmbeddingProvider()` and the `EmbeddingProvider`
- * interface, never a concrete provider, so switching vendors is a one-line
- * change here plus an env var (Decision 1: swappable embeddings).
+ * Everything else depends on the `EmbeddingProvider` interface (and, for
+ * space identity, `EmbeddingSpace`), never a concrete vendor. Adding a provider
+ * is: implement it, add a case here, extend the name union. Selecting one is a
+ * validated name string — no keys ever leave the server.
  */
 
-import { createDeepInfraProvider } from "./deepinfra";
-import { EmbeddingConfigError, type EmbeddingProvider } from "./types";
+import { createDeepInfraProvider, describeDeepInfra } from "./deepinfra";
+import { createJinaProvider, describeJina } from "./jina";
+import {
+  EmbeddingConfigError,
+  type EmbeddingProvider,
+  type EmbeddingSpace,
+} from "./types";
 
 export {
   EMBEDDING_DIMENSIONS,
   EmbeddingConfigError,
   type EmbeddingProvider,
+  type EmbeddingSpace,
   type EmbeddingVector,
 } from "./types";
 export { buildEmbeddingInput, type EmbeddableItem } from "./input";
 
-const DEFAULT_PROVIDER = "deepinfra";
+/** Known providers. Order is the UI display order. */
+export const EMBEDDING_PROVIDER_NAMES = ["jina", "deepinfra"] as const;
+export type EmbeddingProviderName = (typeof EMBEDDING_PROVIDER_NAMES)[number];
+
+/** Short UI labels (match the product spec's wording). */
+export const PROVIDER_LABELS: Record<EmbeddingProviderName, string> = {
+  jina: "Jina",
+  deepinfra: "BGE-M3",
+};
+
+export function isEmbeddingProviderName(x: unknown): x is EmbeddingProviderName {
+  return typeof x === "string" && (EMBEDDING_PROVIDER_NAMES as readonly string[]).includes(x);
+}
+
+/** The provider configured via `EMBEDDINGS_PROVIDER` (default `deepinfra`). */
+function readConfiguredName(): EmbeddingProviderName {
+  const n = process.env.EMBEDDINGS_PROVIDER?.trim();
+  if (!n) return "deepinfra";
+  if (isEmbeddingProviderName(n)) return n;
+  throw new EmbeddingConfigError(`Unknown EMBEDDINGS_PROVIDER: "${n}"`);
+}
 
 /**
- * Construct the configured provider. Reads `EMBEDDINGS_PROVIDER` (default
- * `deepinfra`). Throws `EmbeddingConfigError` for an unknown name or when the
- * chosen provider has no credentials — callers treat that as "skip embedding".
+ * Resolve a provider name: an explicit (already-validated) name wins; an empty
+ * value falls back to the env default. An explicit-but-unknown name throws so
+ * bad input surfaces rather than silently switching providers.
  */
-export function getEmbeddingProvider(): EmbeddingProvider {
-  const name = process.env.EMBEDDINGS_PROVIDER?.trim() || DEFAULT_PROVIDER;
-  switch (name) {
+export function resolveProviderName(name?: string | null): EmbeddingProviderName {
+  if (name == null || name === "") return readConfiguredName();
+  if (isEmbeddingProviderName(name)) return name;
+  throw new EmbeddingConfigError(`Unknown embedding provider: "${name}"`);
+}
+
+/** Space identity for a provider — no API key required (used by clustering). */
+export function describeProvider(name?: string | null): EmbeddingSpace {
+  switch (resolveProviderName(name)) {
+    case "jina":
+      return describeJina();
     case "deepinfra":
-      return createDeepInfraProvider();
-    default:
-      throw new EmbeddingConfigError(`Unknown EMBEDDINGS_PROVIDER: "${name}"`);
+      return describeDeepInfra();
   }
 }
 
 /**
- * Like `getEmbeddingProvider` but returns `null` instead of throwing when the
- * provider is merely unconfigured. Use in pipelines that should degrade to a
- * no-op (leaving items un-embedded) when no key is wired yet.
+ * Construct the live provider for `name` (or the env default). Throws
+ * `EmbeddingConfigError` when that provider has no credentials.
  */
-export function tryGetEmbeddingProvider(): EmbeddingProvider | null {
+export function getEmbeddingProvider(name?: string | null): EmbeddingProvider {
+  switch (resolveProviderName(name)) {
+    case "jina":
+      return createJinaProvider();
+    case "deepinfra":
+      return createDeepInfraProvider();
+  }
+}
+
+/** Like `getEmbeddingProvider` but returns `null` when unconfigured (skip). */
+export function tryGetEmbeddingProvider(name?: string | null): EmbeddingProvider | null {
   try {
-    return getEmbeddingProvider();
+    return getEmbeddingProvider(name);
   } catch (err) {
     if (err instanceof EmbeddingConfigError) return null;
     throw err;
+  }
+}
+
+/** True when the given provider has an API key configured (no key exposed). */
+export function isProviderConfigured(name: EmbeddingProviderName): boolean {
+  switch (name) {
+    case "jina":
+      return Boolean(process.env.JINA_API_KEY?.trim());
+    case "deepinfra":
+      return Boolean(
+        process.env.DEEPINFRA_API_KEY?.trim() || process.env.EMBEDDINGS_API_KEY?.trim(),
+      );
   }
 }

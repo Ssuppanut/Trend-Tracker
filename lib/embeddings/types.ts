@@ -20,6 +20,18 @@ export const EMBEDDING_DIMENSIONS = 1024;
 /** A single embedding vector: `EMBEDDING_DIMENSIONS` finite numbers. */
 export type EmbeddingVector = number[];
 
+/**
+ * Identity of an embedding space. Two vectors are only comparable (for
+ * clustering / similarity) when their `provider` AND `model` match — even at
+ * equal `dimensions`, different models occupy different spaces. Persisted
+ * alongside every stored vector so spaces are never silently mixed.
+ */
+export interface EmbeddingSpace {
+  provider: string;
+  model: string;
+  dimensions: number;
+}
+
 export interface EmbeddingProvider {
   /** Stable slug for logs, e.g. 'deepinfra'. */
   readonly name: string;
