@@ -101,3 +101,35 @@ export function isProviderConfigured(name: EmbeddingProviderName): boolean {
       );
   }
 }
+
+/** Non-secret provider descriptor for the UI (never includes any key). */
+export interface ProviderStatus {
+  name: EmbeddingProviderName;
+  label: string;
+  model: string;
+  dimensions: number;
+  configured: boolean;
+}
+
+/** All providers with their space + configured flag — safe to send to the UI. */
+export function listProviders(): ProviderStatus[] {
+  return EMBEDDING_PROVIDER_NAMES.map((name) => {
+    const space = describeProvider(name);
+    return {
+      name,
+      label: PROVIDER_LABELS[name],
+      model: space.model,
+      dimensions: space.dimensions,
+      configured: isProviderConfigured(name),
+    };
+  });
+}
+
+/** The default provider (env `EMBEDDINGS_PROVIDER`), never throwing. */
+export function defaultProviderName(): EmbeddingProviderName {
+  try {
+    return resolveProviderName();
+  } catch {
+    return "deepinfra";
+  }
+}

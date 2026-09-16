@@ -1,6 +1,7 @@
 import { formatDistanceToNowStrict } from "date-fns";
 
 import { DashboardHeader } from "@/app/dashboard-header";
+import { defaultProviderName, listProviders } from "@/lib/embeddings";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -58,6 +59,10 @@ function relative(iso: string): string {
 export default async function DashboardPage() {
   const supabase = createServiceRoleClient();
 
+  // Non-secret provider metadata for the header selector (no keys sent).
+  const providers = listProviders();
+  const defaultProvider = defaultProviderName();
+
   const [totalRes, metaRes, latestRes] = await Promise.all([
     supabase.from("raw_items").select("*", { count: "exact", head: true }),
     supabase.from("raw_items").select("source, lang, category_hint"),
@@ -75,7 +80,7 @@ export default async function DashboardPage() {
   if (error) {
     return (
       <main className="mx-auto max-w-7xl space-y-6 p-8">
-        <DashboardHeader />
+        <DashboardHeader providers={providers} defaultProvider={defaultProvider} />
         <Card className="border-destructive">
           <CardHeader>
             <CardTitle className="text-destructive">Query failed</CardTitle>
@@ -99,7 +104,7 @@ export default async function DashboardPage() {
   if (total === 0) {
     return (
       <main className="mx-auto max-w-7xl space-y-6 p-8">
-        <DashboardHeader />
+        <DashboardHeader providers={providers} defaultProvider={defaultProvider} />
         <Card>
           <CardHeader>
             <CardTitle>No items yet</CardTitle>
@@ -143,7 +148,7 @@ export default async function DashboardPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-8">
-      <DashboardHeader />
+      <DashboardHeader providers={providers} defaultProvider={defaultProvider} />
 
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
