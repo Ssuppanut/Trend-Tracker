@@ -59,11 +59,15 @@ export async function embedPendingItems(
     limit?: number;
     /** Inject a provider (tests); `undefined` = resolve from env, `null` = force-skip. */
     provider?: EmbeddingProvider | null;
+    /** Provider name to resolve when `provider` is not injected. */
+    providerName?: string | null;
+    /** Reference time for embedding_generated_at (ms); injected in tests. */
+    now?: number;
   } = {},
 ): Promise<EmbedPendingResult> {
   const limit = opts.limit ?? DEFAULT_LIMIT;
   const provider =
-    opts.provider !== undefined ? opts.provider : tryGetEmbeddingProvider();
+    opts.provider !== undefined ? opts.provider : tryGetEmbeddingProvider(opts.providerName);
 
   if (!provider) {
     return {
@@ -114,10 +118,18 @@ export async function embedPendingItems(
     };
   }
 
+  const generatedAt = new Date(opts.now ?? Date.now()).toISOString();
   const writes = rows.map((row, i) => async () => {
     const { error: upErr } = await supabase
       .from("raw_items")
-      .update({ embedding: toVectorLiteral(vectors[i]) })
+      .update({
+        embedding: toVectorLiteral(vectors[i]),
+        // Stamp the space so clustering never mixes providers/models.
+        embedding_provider: provider.name,
+        embedding_model: provider.model,
+        embedding_dim: provider.dimensions,
+        embedding_generated_at: generatedAt,
+      })
       .eq("id", row.id);
     if (upErr) {
       console.error(`[embed] update id=${row.id} failed: ${upErr.message}`);

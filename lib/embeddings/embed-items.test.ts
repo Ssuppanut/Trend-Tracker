@@ -77,14 +77,21 @@ describe("embedPendingItems", () => {
       [0.3, 0.4],
     ]);
 
-    const res = await embedPendingItems(sb.client, { provider });
+    const NOW = new Date("2026-09-15T12:00:00.000Z").getTime();
+    const res = await embedPendingItems(sb.client, { provider, now: NOW });
 
     expect(res).toMatchObject({ candidates: 2, embedded: 2, skipped: false });
     // provider saw composed inputs (title + body)
     expect(provider.embed).toHaveBeenCalledWith(["A\n\nabody", "B"]);
-    // two write-backs with bracket literals
-    expect(sb.update).toHaveBeenNthCalledWith(1, { embedding: "[0.1,0.2]" });
-    expect(sb.update).toHaveBeenNthCalledWith(2, { embedding: "[0.3,0.4]" });
+    // write-backs carry the vector literal + full space provenance
+    const meta = {
+      embedding_provider: "fake",
+      embedding_model: "fake-model",
+      embedding_dim: 2,
+      embedding_generated_at: "2026-09-15T12:00:00.000Z",
+    };
+    expect(sb.update).toHaveBeenNthCalledWith(1, { embedding: "[0.1,0.2]", ...meta });
+    expect(sb.update).toHaveBeenNthCalledWith(2, { embedding: "[0.3,0.4]", ...meta });
     expect(sb.eq).toHaveBeenCalledWith("id", 10);
     expect(sb.eq).toHaveBeenCalledWith("id", 20);
   });

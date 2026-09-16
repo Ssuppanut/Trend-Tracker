@@ -66,6 +66,10 @@ export interface Database {
           // PostgREST on read; writes accept that literal or a number[]. Parse
           // with lib/embeddings/vector.ts before doing math on it.
           embedding: string | null;
+          embedding_provider: string | null;
+          embedding_model: string | null;
+          embedding_dim: number | null;
+          embedding_generated_at: string | null;
           trend_id: number | null;
         };
         Insert: {
@@ -82,6 +86,10 @@ export interface Database {
           published_at: string;
           fetched_at?: string;
           embedding?: string | number[] | null;
+          embedding_provider?: string | null;
+          embedding_model?: string | null;
+          embedding_dim?: number | null;
+          embedding_generated_at?: string | null;
           trend_id?: number | null;
         };
         Update: {
@@ -98,6 +106,10 @@ export interface Database {
           published_at?: string;
           fetched_at?: string;
           embedding?: string | number[] | null;
+          embedding_provider?: string | null;
+          embedding_model?: string | null;
+          embedding_dim?: number | null;
+          embedding_generated_at?: string | null;
           trend_id?: number | null;
         };
         Relationships: [];
@@ -118,6 +130,8 @@ export interface Database {
           engagement_sum: number;
           // pgvector text literal on read; string | number[] on write.
           centroid: string | null;
+          embedding_provider: string | null;
+          embedding_model: string | null;
           first_seen: string;
           last_updated: string;
         };
@@ -135,6 +149,8 @@ export interface Database {
           source_count?: number;
           engagement_sum?: number;
           centroid?: string | number[] | null;
+          embedding_provider?: string | null;
+          embedding_model?: string | null;
           first_seen?: string;
           last_updated?: string;
         };
@@ -152,6 +168,8 @@ export interface Database {
           source_count?: number;
           engagement_sum?: number;
           centroid?: string | number[] | null;
+          embedding_provider?: string | null;
+          embedding_model?: string | null;
           first_seen?: string;
           last_updated?: string;
         };
