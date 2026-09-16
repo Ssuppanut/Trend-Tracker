@@ -113,6 +113,58 @@ The response reports per-source counts:
 > Vercel Cron auto-scheduling disabled to save invocations during development.
 > Re-enable by restoring `vercel.json` when ready for production auto-run.
 
+## Trend engine (analyze)
+
+`GET /api/cron/analyze` turns raw items into scored **trends**. It runs two
+steps, both idempotent and safe to re-run:
+
+1. **Embed** — `raw_items` without an embedding are embedded (bge-m3, 1024
+   dims) via the configured provider and written back. If no provider key is
+   set this step is a clean no-op — it never writes placeholder vectors.
+2. **Cluster + score** — unclustered items with embeddings are grouped by
+   embedding similarity. Incoming items first attach to existing trends (so
+   trend ids and their snapshot history stay stable); the rest form new
+   trends. Each trend gets a deterministic 0–100 score (velocity 30 / volume
+   25 / engagement 20 / source diversity 15 / recency 10) and a
+   `trend_snapshots` row for its timeline.
+
+No LLM and no invented multi-signal/sentiment inputs — every number derives
+from the RSS + Hacker News data actually present. LLM titles/summaries are
+deferred (`trends.summary` stays null; titles use the top item's headline).
+
+It is protected by `CRON_SECRET` (same scheme as ingest) and is manual-trigger
+only:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/analyze
+```
+
+The response reports counts:
+
+```json
+{ "ok": true, "durationMs": 1200, "embed": { "candidates": 40, "embedded": 40, "skipped": false },
+  "itemsConsidered": 40, "trendsCreated": 3, "trendsUpdated": 1, "itemsClustered": 22 }
+```
+
+### Enabling embeddings (wire the key)
+
+The embedding provider is swappable (`lib/embeddings/`, default **DeepInfra**
+hosting **bge-m3**). To turn it on:
+
+1. Get a DeepInfra API key (https://deepinfra.com → API keys).
+2. Set `DEEPINFRA_API_KEY` in `.env.local` (see `.env.example`).
+3. Allowlist `api.deepinfra.com` in the sandbox egress list and restart the
+   workspace (server-side `fetch` also needs `NODE_USE_ENV_PROXY=1`, as with
+   Supabase).
+
+Cost is ~$0.01 / 1M tokens (a few cents/month here). To switch providers
+later, add an implementation under `lib/embeddings/` and point
+`EMBEDDINGS_PROVIDER` at it — nothing else changes.
+
+> Known Phase-1 limitation: only trends that gain members in a run are
+> recomputed; idle trends aren't decayed until they next gain a member. A
+> periodic decay pass is a planned follow-up.
+
 ## Project structure
 
 ```

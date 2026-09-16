@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clusterByEmbedding } from "./cluster";
+import { assignToExistingTrends, clusterByEmbedding } from "./cluster";
 import type { ClusterItem } from "./types";
 
 let nextId = 1;
@@ -74,5 +74,47 @@ describe("clusterByEmbedding", () => {
     expect(forward.map((x) => x.items.length).sort()).toEqual(
       reversed.map((x) => x.items.length).sort(),
     );
+  });
+});
+
+describe("assignToExistingTrends", () => {
+  it("attaches items to the most similar existing trend above threshold", () => {
+    const { assignments, residual } = assignToExistingTrends(
+      [item([1, 0], { id: 1 }), item([0.97, 0.05], { id: 2 })],
+      [
+        { id: 100, centroid: [1, 0] },
+        { id: 200, centroid: [0, 1] },
+      ],
+      0.6,
+    );
+    expect(residual).toHaveLength(0);
+    expect(assignments.get(100)?.map((i) => i.id)).toEqual([1, 2]);
+    expect(assignments.has(200)).toBe(false);
+  });
+
+  it("routes items below threshold to residual", () => {
+    const { assignments, residual } = assignToExistingTrends(
+      [item([0, 1], { id: 9 })],
+      [{ id: 100, centroid: [1, 0] }],
+      0.6,
+    );
+    expect(assignments.size).toBe(0);
+    expect(residual.map((i) => i.id)).toEqual([9]);
+  });
+
+  it("treats everything as residual when there are no existing trends", () => {
+    const items = [item([1, 0], { id: 1 }), item([0, 1], { id: 2 })];
+    const { assignments, residual } = assignToExistingTrends(items, [], 0.6);
+    expect(assignments.size).toBe(0);
+    expect(residual).toHaveLength(2);
+  });
+
+  it("skips trends whose centroid dimension does not match", () => {
+    const { residual } = assignToExistingTrends(
+      [item([1, 0], { id: 1 })],
+      [{ id: 100, centroid: [1, 0, 0] }],
+      0.6,
+    );
+    expect(residual.map((i) => i.id)).toEqual([1]);
   });
 });

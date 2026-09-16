@@ -7,7 +7,12 @@ import { clusterByEmbedding, SIM_THRESHOLD } from "./cluster";
 import { pickCategory, pickLangScope, pickTitle, scoreCluster } from "./score";
 import type { ClusterItem, ScoredTrend } from "./types";
 
-export { SIM_THRESHOLD } from "./cluster";
+export {
+  SIM_THRESHOLD,
+  assignToExistingTrends,
+  type AssignmentResult,
+  type ExistingTrend,
+} from "./cluster";
 export { TREND_WEIGHTS, scoreCluster } from "./score";
 export { cosineSimilarity, meanVector } from "./similarity";
 export type {

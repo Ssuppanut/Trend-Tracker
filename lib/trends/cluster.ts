@@ -1,6 +1,60 @@
 import { cosineSimilarity } from "./similarity";
 import type { Cluster, ClusterItem } from "./types";
 
+/** An existing trend an incoming item can attach to (by centroid similarity). */
+export interface ExistingTrend {
+  id: number;
+  centroid: number[];
+}
+
+export interface AssignmentResult {
+  /** New members per existing trend id (only trends that gained ≥1 item). */
+  assignments: Map<number, ClusterItem[]>;
+  /** Items that matched no existing trend — passed on to fresh clustering. */
+  residual: ClusterItem[];
+}
+
+/**
+ * Attach each item to the most similar existing trend whose centroid meets the
+ * threshold; unmatched items are returned as `residual`. This keeps trend ids
+ * (and their snapshot history) stable across analyze runs instead of spawning a
+ * duplicate trend for every new batch. Pure and deterministic.
+ */
+export function assignToExistingTrends(
+  items: ClusterItem[],
+  existing: ExistingTrend[],
+  threshold = SIM_THRESHOLD,
+): AssignmentResult {
+  const assignments = new Map<number, ClusterItem[]>();
+  const residual: ClusterItem[] = [];
+
+  for (const item of items) {
+    if (item.embedding.length === 0) {
+      residual.push(item);
+      continue;
+    }
+    let bestId = -1;
+    let bestSim = -Infinity;
+    for (const trend of existing) {
+      if (trend.centroid.length !== item.embedding.length) continue;
+      const sim = cosineSimilarity(item.embedding, trend.centroid);
+      if (sim > bestSim) {
+        bestSim = sim;
+        bestId = trend.id;
+      }
+    }
+    if (bestId >= 0 && bestSim >= threshold) {
+      const list = assignments.get(bestId) ?? [];
+      list.push(item);
+      assignments.set(bestId, list);
+    } else {
+      residual.push(item);
+    }
+  }
+
+  return { assignments, residual };
+}
+
 /**
  * Cosine-similarity threshold for putting an item in an existing cluster.
  * Tuned for bge-m3, where clearly-same-topic pairs sit well above ~0.6 and
