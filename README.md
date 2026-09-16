@@ -53,7 +53,9 @@ There is no Supabase CLI link yet — apply the schema by hand:
    contents of [`supabase/migrations/0001_initial.sql`](supabase/migrations/0001_initial.sql),
    and run it. This creates every table (`categories`, `raw_items`, `trends`,
    `trend_snapshots`, `profiles`, `user_keywords`), the indexes, the RLS
-   policies, and seeds the fixed `categories` rows.
+   policies, and seeds the fixed `categories` rows. Then apply the later
+   migrations in order — `0002_grants.sql` (role grants) and
+   `0003_embedding_metadata.sql` (embedding provenance columns).
 3. **Wire up env vars.** In **Project Settings → API**, copy the values into
    `.env.local`:
    - `NEXT_PUBLIC_SUPABASE_URL` — the project URL
@@ -146,20 +148,33 @@ The response reports counts:
   "itemsConsidered": 40, "trendsCreated": 3, "trendsUpdated": 1, "itemsClustered": 22 }
 ```
 
-### Enabling embeddings (wire the key)
+### Embedding providers (Jina + DeepInfra/BGE-M3)
 
-The embedding provider is swappable (`lib/embeddings/`, default **DeepInfra**
-hosting **bge-m3**). To turn it on:
+Two providers sit behind one `EmbeddingProvider` interface (`lib/embeddings/`);
+the trend engine, clustering and search depend only on that interface.
 
-1. Get a DeepInfra API key (https://deepinfra.com → API keys).
-2. Set `DEEPINFRA_API_KEY` in `.env.local` (see `.env.example`).
-3. Allowlist `api.deepinfra.com` in the sandbox egress list and restart the
-   workspace (server-side `fetch` also needs `NODE_USE_ENV_PROXY=1`, as with
-   Supabase).
+| Provider | Model | Dims | Key | Egress host |
+| -------- | ----- | ---- | --- | ----------- |
+| **Jina** | `jina-embeddings-v3` (multilingual text) | 1024 | `JINA_API_KEY` | `api.jina.ai` |
+| **DeepInfra / BGE-M3** | `BAAI/bge-m3` | 1024 | `DEEPINFRA_API_KEY` | `api.deepinfra.com` |
 
-Cost is ~$0.01 / 1M tokens (a few cents/month here). To switch providers
-later, add an implementation under `lib/embeddings/` and point
-`EMBEDDINGS_PROVIDER` at it — nothing else changes.
+To enable one: set its key in `.env.local` (see `.env.example`), allowlist its
+egress host, and restart the workspace (server-side `fetch` also needs
+`NODE_USE_ENV_PROXY=1`, as with Supabase). Until a key is set, that provider is
+a clean skip — it never writes placeholder vectors.
+
+**Choosing the provider.** The dashboard has an `Embedding: [ … ▼ ]` selector
+immediately left of **Fetch new items**. Changing it sets which provider embeds
+**new** items on the next fetch (`EMBEDDINGS_PROVIDER` is the server default).
+The UI only ever sends a provider *name* to a Server Action — keys stay on the
+server. Add a third provider by implementing it in `lib/embeddings/` and adding
+one `case`; nothing else changes.
+
+**Spaces never mix.** Jina and bge-m3 vectors are different spaces even at 1024
+dims. Every embedding is tagged with `embedding_provider` + `embedding_model`
+(migration `0003`), and clustering/search operate within a single space.
+Switching the provider does **not** re-embed existing rows — those keep their
+original provider; a future migration can re-embed on demand.
 
 > Known Phase-1 limitation: only trends that gain members in a run are
 > recomputed; idle trends aren't decayed until they next gain a member. A
